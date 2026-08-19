@@ -36,6 +36,8 @@ func populateMovieData(c *gin.Context) {
 	q := req.URL.Query()
 	q.Set("primary_release_year", "2025")
 	q.Set("sort_by", "primary_release_date.desc")
+	q.Set("vote_count.gte", "100")
+	q.Set("with_original_language", "en")
 	req.URL.RawQuery = q.Encode()
 	
 	var client = &http.Client{
