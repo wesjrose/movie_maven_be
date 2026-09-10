@@ -7,8 +7,13 @@ import (
 	"github.com/lib/pq"
 )
 
+const tmdbMaxDiscoverPages = 10
+
 type tmdbDiscoverResponse struct {
-	Results []tmdbMovie `json:"results"`
+	Page         int         `json:"page"`
+	TotalPages   int         `json:"total_pages"`
+	TotalResults int         `json:"total_results"`
+	Results      []tmdbMovie `json:"results"`
 }
 
 type tmdbMovie struct {
@@ -27,12 +32,20 @@ type tmdbMovie struct {
 	GenreIDs         []int   `json:"genre_ids"`
 }
 
-func parseTMDBDiscover(body []byte) ([]tmdbMovie, error) {
+func parseTMDBDiscover(body []byte) (tmdbDiscoverResponse, error) {
 	var payload tmdbDiscoverResponse
 	if err := json.Unmarshal(body, &payload); err != nil {
-		return nil, err
+		return tmdbDiscoverResponse{}, err
 	}
-	return payload.Results, nil
+	return payload, nil
+}
+
+func moviesFromTMDB(results []tmdbMovie) []Movie {
+	movies := make([]Movie, 0, len(results))
+	for _, result := range results {
+		movies = append(movies, result.toMovie())
+	}
+	return movies
 }
 
 func (m tmdbMovie) toMovie() Movie {
