@@ -155,10 +155,12 @@ func populateMoviesSince(c *gin.Context) {
 		}
 
 		if page == 1 {
+			log.Printf("populateMoviesSince: TMDB reported %d total pages for year %d", payload.TotalPages, year)
 			totalPages = payload.TotalPages
 			if totalPages > tmdbMaxDiscoverPages {
 				totalPages = tmdbMaxDiscoverPages
 			}
+			log.Printf("populateMoviesSince: fetching %d pages for year %d", totalPages, year)
 		}
 
 		movies := moviesFromTMDB(payload.Results)
