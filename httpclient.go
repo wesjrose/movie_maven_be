@@ -6,7 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
+	"sort"
+	"strings"
 	"time"
 )
 
@@ -71,8 +74,24 @@ func (h *HTTPClient) Post(ctx context.Context, path string, headers map[string]s
 	return h.do(req)
 }
 
+func logOutgoingRequest(req *http.Request) {
+	headers := make([]string, 0, len(req.Header))
+	for key, values := range req.Header {
+		if strings.EqualFold(key, "Authorization") {
+			headers = append(headers, key+": [redacted]")
+			continue
+		}
+		headers = append(headers, key+": "+strings.Join(values, ", "))
+	}
+
+	sort.Strings(headers)
+	log.Printf("httpclient: %s %s headers=[%s]", req.Method, req.URL.String(), strings.Join(headers, "; "))
+}
+
 // do executes req and reads the full response body.
 func (h *HTTPClient) do(req *http.Request) (*http.Response, []byte, error) {
+	logOutgoingRequest(req)
+
 	resp, err := h.client.Do(req)
 	if err != nil {
 		return nil, nil, fmt.Errorf("executing %s request to %s: %w", req.Method, req.URL, err)
