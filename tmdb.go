@@ -8,7 +8,7 @@ import (
 	"github.com/lib/pq"
 )
 
-const tmdbMaxDiscoverPages = 10
+const tmdbMaxDiscoverPages = 1000
 
 type tmdbDiscoverResponse struct {
 	Page         int         `json:"page"`
