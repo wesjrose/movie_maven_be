@@ -100,9 +100,13 @@ func populateMoviesSince(c *gin.Context) {
 
 	client := NewHTTPClient(TMDB_URL)
 	headers := tmdbAuthHeaders()
+
+	sixMonthsAge := time.Now().AddDate(0, -6, 0).Format("2006-01-02")
 	params := map[string]string{
 		"primary_release_date.gte": fmt.Sprintf("%d-01-01", year),
-		"sort_by":                  "primary_release_date.asc",
+		"sort_by":                  "primary_release_date.desc",
+		"vote_count.gte":          "200",
+		"release_date.gte":        sixMonthsAge,
 	}
 
 	saved := 0
