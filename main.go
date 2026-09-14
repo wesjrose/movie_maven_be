@@ -62,22 +62,26 @@ func populateMovieData(c *gin.Context) {
 	client := NewHTTPClient(TMDB_URL)
 	resp, body, err := client.Get(c, TMDB_DISCOVER, params, tmdbAuthHeaders())
 	if err != nil {
+		log.Printf("populateMovieData: failed to fetch movies from TMDB: %v", err)
 		c.JSON(http.StatusBadGateway, gin.H{"error": "failed to fetch movies from TMDB"})
 		return
 	}
 	if resp.StatusCode != http.StatusOK {
+		log.Printf("populateMovieData: TMDB returned status %d: %s", resp.StatusCode, previewBody(body))
 		c.Data(resp.StatusCode, "application/json; charset=utf-8", body)
 		return
 	}
 
 	payload, err := parseTMDBDiscover(body)
 	if err != nil {
+		log.Printf("populateMovieData: failed to parse TMDB response: %v body=%s", err, previewBody(body))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to parse TMDB response"})
 		return
 	}
 
 	movies := moviesFromTMDB(payload.Results)
 	if err := upsertMovies(movies); err != nil {
+		log.Printf("populateMovieData: failed to save movies: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save movies"})
 		return
 	}
@@ -89,9 +93,11 @@ func populateMovieData(c *gin.Context) {
 }
 
 func populateMoviesSince(c *gin.Context) {
-	year, err := strconv.Atoi(c.Query("year"))
+	yearQuery := c.Query("year")
+	year, err := strconv.Atoi(yearQuery)
 	maxYear := time.Now().Year() + 1
 	if err != nil || year < 1870 || year > maxYear {
+		log.Printf("populateMoviesSince: invalid year query %q: %v", yearQuery, err)
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": fmt.Sprintf("year query parameter must be an integer between 1870 and %d", maxYear),
 		})
@@ -105,8 +111,8 @@ func populateMoviesSince(c *gin.Context) {
 	params := map[string]string{
 		"primary_release_date.gte": fmt.Sprintf("%d-01-01", year),
 		"sort_by":                  "primary_release_date.desc",
-		"vote_count.gte":          "200",
-		"release_date.gte":        sixMonthsAge,
+		"vote_count.gte":           "200",
+		"release_date.gte":         sixMonthsAge,
 	}
 
 	saved := 0
@@ -118,6 +124,7 @@ func populateMoviesSince(c *gin.Context) {
 
 		resp, body, err := client.Get(c, TMDB_DISCOVER, params, headers)
 		if err != nil {
+			log.Printf("populateMoviesSince: failed to fetch page %d for year %d: %v", page, year, err)
 			c.JSON(http.StatusBadGateway, gin.H{
 				"error":         "failed to fetch movies from TMDB",
 				"year":          year,
@@ -127,6 +134,7 @@ func populateMoviesSince(c *gin.Context) {
 			return
 		}
 		if resp.StatusCode != http.StatusOK {
+			log.Printf("populateMoviesSince: TMDB returned status %d for page %d year %d: %s", resp.StatusCode, page, year, previewBody(body))
 			c.JSON(resp.StatusCode, gin.H{
 				"error":         "TMDB returned an error",
 				"year":          year,
@@ -138,6 +146,7 @@ func populateMoviesSince(c *gin.Context) {
 
 		payload, err := parseTMDBDiscover(body)
 		if err != nil {
+			log.Printf("populateMoviesSince: failed to parse TMDB response for page %d year %d: %v body=%s", page, year, err, previewBody(body))
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to parse TMDB response"})
 			return
 		}
@@ -151,6 +160,7 @@ func populateMoviesSince(c *gin.Context) {
 
 		movies := moviesFromTMDB(payload.Results)
 		if err := upsertMovies(movies); err != nil {
+			log.Printf("populateMoviesSince: failed to save movies for page %d year %d: %v", page, year, err)
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error":         "failed to save movies",
 				"year":          year,
@@ -175,6 +185,7 @@ func populateMoviesSince(c *gin.Context) {
 func listMovies(c *gin.Context) {
 	var movies []Movie
 	if err := db.Order("release_date DESC NULLS LAST").Find(&movies).Error; err != nil {
+		log.Printf("listMovies: failed to load movies: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load movies"})
 		return
 	}
@@ -183,9 +194,16 @@ func listMovies(c *gin.Context) {
 }
 
 func main() {
-	_ = godotenv.Load()
+	logFile, err := initLogger()
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer logFile.Close()
 
-	var err error
+	if err := godotenv.Load(); err != nil {
+		log.Printf("loading .env: %v", err)
+	}
+
 	db, err = openDB()
 	if err != nil {
 		log.Fatal(err)
@@ -196,5 +214,7 @@ func main() {
 	router.GET("/populate-movies-since", populateMoviesSince)
 	router.GET("/movies", listMovies)
 
-	router.Run("localhost:8001")
+	if err := router.Run("localhost:8001"); err != nil {
+		log.Fatal(err)
+	}
 }

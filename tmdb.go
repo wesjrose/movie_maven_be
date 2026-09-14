@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"log"
 	"time"
 
 	"github.com/lib/pq"
@@ -70,7 +71,10 @@ func (m tmdbMovie) toMovie() Movie {
 	}
 
 	if m.ReleaseDate != "" {
-		if parsed, err := time.Parse("2006-01-02", m.ReleaseDate); err == nil {
+		parsed, err := time.Parse("2006-01-02", m.ReleaseDate)
+		if err != nil {
+			log.Printf("toMovie: invalid release_date %q for tmdb_id %d: %v", m.ReleaseDate, m.ID, err)
+		} else {
 			movie.ReleaseDate = &parsed
 		}
 	}
