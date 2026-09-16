@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Movie Maven API
-  version: 1.0.0
+  version: 1.1.0
   summary: Catalog and ingest movies from TMDB into the Movie Maven store.
   description: |
     HTTP API for the Movie Maven backend. The server currently listens on
@@ -30,17 +30,44 @@ paths:
       operationId: listMovies
       summary: List cataloged movies
       description: |
-        Returns every non-deleted movie in the local database, newest
+        Returns a page of non-deleted movies from the local database, newest
         `release_date` first (`NULLS LAST`).
+
+        Defaults to `page=1` and `page_size=20`. `page_size` may be at most 100.
+        A page past the last page returns an empty `movies` array.
+      parameters:
+        - name: page
+          in: query
+          required: false
+          description: 1-based page number. Defaults to 1.
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+            example: 1
+        - name: page_size
+          in: query
+          required: false
+          description: Number of movies per page. Defaults to 20, maximum 100.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+            example: 20
       responses:
         "200":
-          description: Catalog movies.
+          description: One page of catalog movies.
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: "#/components/schemas/Movie"
+                $ref: "#/components/schemas/ListMoviesResponse"
+        "400":
+          description: Invalid `page` or `page_size` query parameter.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "500":
           description: Failed to load movies from the database.
           content:
@@ -218,6 +245,30 @@ components:
         updated_at:
           type: string
           format: date-time
+
+    ListMoviesResponse:
+      type: object
+      additionalProperties: false
+      required: [page, page_size, total_pages, total_results, movies]
+      properties:
+        page:
+          type: integer
+          description: 1-based page that was returned.
+          example: 1
+        page_size:
+          type: integer
+          description: Number of movies requested per page.
+          example: 20
+        total_pages:
+          type: integer
+          description: Total pages at this page_size. 0 when the catalog is empty.
+        total_results:
+          type: integer
+          description: Total non-deleted movies in the catalog.
+        movies:
+          type: array
+          items:
+            $ref: "#/components/schemas/Movie"
 
     PopulateMoviesResponse:
       type: object

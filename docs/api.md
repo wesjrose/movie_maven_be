@@ -18,13 +18,35 @@ Duplicates are keyed by `tmdb_id`. A second ingest updates the existing row inst
 
 ### `GET /movies`
 
-Returns every non-deleted catalog row, ordered by `release_date` descending (`NULLS LAST`).
+Returns a page of non-deleted catalog rows, ordered by `release_date` descending (`NULLS LAST`).
+
+**Query**
+
+| Name | Required | Description |
+|------|----------|-------------|
+| `page` | no | 1-based page number. Defaults to `1`. |
+| `page_size` | no | Movies per page. Defaults to `20`, maximum `100`. |
+
+A page past the last page returns an empty `movies` array.
 
 ```bash
-curl http://localhost:8001/movies
+curl "http://localhost:8001/movies"
+curl "http://localhost:8001/movies?page=2&page_size=20"
 ```
 
-**200** — `Movie[]`
+**200**
+
+```json
+{
+  "page": 1,
+  "page_size": 20,
+  "total_pages": 12,
+  "total_results": 240,
+  "movies": []
+}
+```
+
+**400** — invalid `page` or `page_size`
 
 **500** — `{ "error": "failed to load movies" }`
 

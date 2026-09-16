@@ -16,6 +16,8 @@ import (
 
 const TMDB_URL string = "https://api.themoviedb.org"
 const TMDB_DISCOVER string = "/3/discover/movie"
+const defaultMoviePageSize = 20
+const maxMoviePageSize = 100
 
 var db *gorm.DB
 
@@ -188,14 +190,57 @@ func populateMoviesSince(c *gin.Context) {
 }
 
 func listMovies(c *gin.Context) {
-	var movies []Movie
-	if err := db.Order("release_date DESC NULLS LAST").Find(&movies).Error; err != nil {
+	page := 1
+	if raw := c.Query("page"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 {
+			log.Printf("listMovies: invalid page query %q: %v", raw, err)
+			c.JSON(http.StatusBadRequest, gin.H{"error": "page query parameter must be an integer >= 1"})
+			return
+		}
+		page = parsed
+	}
+
+	pageSize := defaultMoviePageSize
+	if raw := c.Query("page_size"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 || parsed > maxMoviePageSize {
+			log.Printf("listMovies: invalid page_size query %q: %v", raw, err)
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": fmt.Sprintf("page_size query parameter must be an integer between 1 and %d", maxMoviePageSize),
+			})
+			return
+		}
+		pageSize = parsed
+	}
+
+	var totalResults int64
+	if err := db.Model(&Movie{}).Count(&totalResults).Error; err != nil {
+		log.Printf("listMovies: failed to count movies: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load movies"})
+		return
+	}
+
+	movies := []Movie{}
+	offset := (page - 1) * pageSize
+	if err := db.Order("release_date DESC NULLS LAST").Limit(pageSize).Offset(offset).Find(&movies).Error; err != nil {
 		log.Printf("listMovies: failed to load movies: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load movies"})
 		return
 	}
 
-	c.JSON(http.StatusOK, movies)
+	totalPages := 0
+	if totalResults > 0 {
+		totalPages = int((totalResults + int64(pageSize) - 1) / int64(pageSize))
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"page":          page,
+		"page_size":     pageSize,
+		"total_pages":   totalPages,
+		"total_results": totalResults,
+		"movies":        movies,
+	})
 }
 
 func main() {
