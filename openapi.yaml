@@ -1,0 +1,274 @@
+openapi: 3.1.0
+info:
+  title: Movie Maven API
+  version: 1.0.0
+  summary: Catalog and ingest movies from TMDB into the Movie Maven store.
+  description: |
+    HTTP API for the Movie Maven backend. The server currently listens on
+    `http://localhost:8001` and returns JSON.
+
+    Populate endpoints fetch from [The Movie Database (TMDB)](https://developer.themoviedb.org/)
+    Discover API, upsert by `tmdb_id`, and persist to PostgreSQL. Listing reads
+    the local catalog only.
+
+    This OpenAPI file is the integration contract. Import it into Postman,
+    Insomnia, Stoplight, or OpenAPI code generators.
+  contact:
+    name: Movie Maven
+servers:
+  - url: http://localhost:8001
+    description: Local development
+tags:
+  - name: catalog
+    description: Read the persisted movie catalog.
+  - name: ingest
+    description: Pull movies from TMDB and upsert them into the catalog.
+paths:
+  /movies:
+    get:
+      tags: [catalog]
+      operationId: listMovies
+      summary: List cataloged movies
+      description: |
+        Returns every non-deleted movie in the local database, newest
+        `release_date` first (`NULLS LAST`).
+      responses:
+        "200":
+          description: Catalog movies.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Movie"
+        "500":
+          description: Failed to load movies from the database.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /populate-movies:
+    get:
+      tags: [ingest]
+      operationId: populateMovies
+      summary: Ingest one page of 2025 English-language movies
+      description: |
+        Fetches a single TMDB Discover page for primary release year 2025,
+        original language `en`, `vote_count >= 50`, sorted by
+        `primary_release_date.desc`. Matching movies are upserted on `tmdb_id`.
+      responses:
+        "200":
+          description: Movies saved (insert or update).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PopulateMoviesResponse"
+        "502":
+          description: TMDB request failed before a response body was received.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: TMDB payload could not be parsed or movies could not be saved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: |
+            TMDB returned a non-200 status. The status code and JSON body are
+            forwarded from TMDB unchanged.
+
+  /populate-movies-since:
+    get:
+      tags: [ingest]
+      operationId: populateMoviesSince
+      summary: Ingest movies whose primary release is on or after a given year
+      description: |
+        Fetches TMDB Discover pages for English-language movies with
+        `vote_count >= 200`, primary release date on or after `{year}-01-01`,
+        and primary release date on or before six months before today.
+
+        Results are sorted by `primary_release_date.desc`. Pages are fetched
+        sequentially up to TMDB's reported `total_pages`, capped by the server
+        (`tmdbMaxDiscoverPages`; TMDB itself also caps Discover at 500 pages).
+
+        Each page is upserted on `tmdb_id`. The `saved` count includes both
+        inserts and updates. This call can take a long time when many pages
+        are available.
+      parameters:
+        - name: year
+          in: query
+          required: true
+          description: |
+            Inclusive lower bound for primary release year. Must be an integer
+            from 1870 through the current calendar year plus one.
+          schema:
+            type: integer
+            minimum: 1870
+            example: 2020
+      responses:
+        "200":
+          description: Ingest finished.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PopulateMoviesSinceResponse"
+        "400":
+          description: Missing or invalid `year` query parameter.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: TMDB request failed while fetching a page.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PopulateMoviesSinceError"
+        "500":
+          description: TMDB payload could not be parsed or movies could not be saved.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/Error"
+                  - $ref: "#/components/schemas/PopulateMoviesSinceError"
+        default:
+          description: TMDB returned a non-200 status while fetching a page.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PopulateMoviesSinceError"
+
+components:
+  schemas:
+    Movie:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - tmdb_id
+        - title
+        - original_title
+        - overview
+        - poster_path
+        - backdrop_path
+        - original_language
+        - vote_average
+        - vote_count
+        - popularity
+        - adult
+        - genre_ids
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: integer
+          description: Local primary key.
+          example: 405
+        tmdb_id:
+          type: integer
+          description: TMDB movie id. Unique in this catalog.
+          example: 1204680
+        title:
+          type: string
+          example: Coyote vs. Acme
+        original_title:
+          type: string
+          example: Coyote vs. Acme
+        overview:
+          type: string
+        release_date:
+          type: string
+          format: date-time
+          nullable: true
+          description: Primary release date, RFC 3339. Null when TMDB had no parseable date.
+        poster_path:
+          type: string
+          description: TMDB poster path (not a full URL).
+          example: /vhv7lBWYM0DUuNU2a0V7Rhq21dD.jpg
+        backdrop_path:
+          type: string
+          description: TMDB backdrop path (not a full URL).
+        original_language:
+          type: string
+          example: en
+        vote_average:
+          type: number
+          format: float
+        vote_count:
+          type: integer
+        popularity:
+          type: number
+          format: float
+        adult:
+          type: boolean
+        genre_ids:
+          type: array
+          items:
+            type: integer
+          description: TMDB genre ids.
+          example: [35, 12, 10751]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    PopulateMoviesResponse:
+      type: object
+      additionalProperties: false
+      required: [saved, movies]
+      properties:
+        saved:
+          type: integer
+          description: Number of movies upserted from this request.
+        movies:
+          type: array
+          items:
+            $ref: "#/components/schemas/Movie"
+
+    PopulateMoviesSinceResponse:
+      type: object
+      additionalProperties: false
+      required: [year, pages_fetched, total_pages, saved]
+      properties:
+        year:
+          type: integer
+          description: The `year` query value that was ingested.
+        pages_fetched:
+          type: integer
+          description: How many TMDB pages were successfully fetched.
+        total_pages:
+          type: integer
+          description: Page count used for the loop (TMDB total, after server cap).
+        saved:
+          type: integer
+          description: Movies upserted across all fetched pages (inserts plus updates).
+
+    Error:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: string
+          example: failed to load movies
+
+    PopulateMoviesSinceError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: string
+        year:
+          type: integer
+        pages_fetched:
+          type: integer
+        saved:
+          type: integer
