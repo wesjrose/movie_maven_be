@@ -19,7 +19,7 @@ func openDB() (*gorm.DB, error) {
 		return nil, fmt.Errorf("connecting to postgres: %w", err)
 	}
 
-	if err := db.AutoMigrate(&Movie{}); err != nil {
+	if err := db.AutoMigrate(&Movie{}, &Genre{}); err != nil {
 		return nil, fmt.Errorf("migrating schema: %w", err)
 	}
 

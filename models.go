@@ -27,3 +27,12 @@ type Movie struct {
 	UpdatedAt        time.Time      `json:"updated_at"`
 	DeletedAt        gorm.DeletedAt `gorm:"index" json:"-"`
 }
+
+// Genre is a TMDB genre. TMDB maintains separate genre lists for movies and
+// TV series that can share an id with a different meaning, or the same
+// meaning under a different id, so MediaType is part of the identity.
+type Genre struct {
+	ID        int    `gorm:"primaryKey" json:"id"`
+	MediaType string `gorm:"primaryKey" json:"media_type"` // "movie" or "tv"
+	Name      string `gorm:"not null" json:"name"`
+}
