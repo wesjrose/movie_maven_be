@@ -16,8 +16,18 @@ import (
 
 const TMDB_URL string = "https://api.themoviedb.org"
 const TMDB_DISCOVER string = "/3/discover/movie"
+const TMDB_GENRE_MOVIE_LIST string = "/3/genre/movie/list"
+const TMDB_GENRE_TV_LIST string = "/3/genre/tv/list"
 const defaultMoviePageSize = 20
 const maxMoviePageSize = 100
+
+var tmdbGenreSources = []struct {
+	path      string
+	mediaType string
+}{
+	{TMDB_GENRE_MOVIE_LIST, "movie"},
+	{TMDB_GENRE_TV_LIST, "tv"},
+}
 
 var db *gorm.DB
 
@@ -51,6 +61,58 @@ func upsertMovies(movies []Movie) error {
 			"updated_at",
 		}),
 	}).Create(&movies).Error
+}
+
+func upsertGenres(genres []Genre) error {
+	if len(genres) == 0 {
+		return nil
+	}
+
+	return db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "id"}, {Name: "media_type"}},
+		DoUpdates: clause.AssignmentColumns([]string{"name"}),
+	}).Create(&genres).Error
+}
+
+func populateGenres(c *gin.Context) {
+	client := NewHTTPClient(TMDB_URL)
+	headers := tmdbAuthHeaders()
+
+	var genres []Genre
+
+	for _, source := range tmdbGenreSources {
+		resp, body, err := client.Get(c, source.path, nil, headers)
+		if err != nil {
+			log.Printf("populateGenres: failed to fetch %s genres from TMDB: %v", source.mediaType, err)
+			c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("failed to fetch %s genres from TMDB", source.mediaType)})
+			return
+		}
+		if resp.StatusCode != http.StatusOK {
+			log.Printf("populateGenres: TMDB returned status %d for %s genres: %s", resp.StatusCode, source.mediaType, previewBody(body))
+			c.Data(resp.StatusCode, "application/json; charset=utf-8", body)
+			return
+		}
+
+		payload, err := parseTMDBGenreList(body)
+		if err != nil {
+			log.Printf("populateGenres: failed to parse TMDB %s genre response: %v body=%s", source.mediaType, err, previewBody(body))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to parse TMDB response"})
+			return
+		}
+
+		genres = append(genres, genresFromTMDB(payload.Genres, source.mediaType)...)
+	}
+
+	if err := upsertGenres(genres); err != nil {
+		log.Printf("populateGenres: failed to save genres: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save genres"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"saved":  len(genres),
+		"genres": genres,
+	})
 }
 
 func populateMovieData(c *gin.Context) {
@@ -260,6 +322,7 @@ func main() {
 	}
 
 	router := gin.Default()
+	router.GET("/populate-genres", populateGenres)
 	router.GET("/populate-movies", populateMovieData)
 	router.GET("/populate-movies-since", populateMoviesSince)
 	router.GET("/movies", listMovies)

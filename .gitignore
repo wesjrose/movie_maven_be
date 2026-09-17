@@ -35,3 +35,4 @@ go.work.sum
 
 # Custom ignores
 debug_*
+movie_maven_be

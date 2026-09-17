@@ -75,6 +75,39 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /populate-genres:
+    get:
+      tags: [ingest]
+      operationId: populateGenres
+      summary: Ingest TMDB's full movie and TV genre lists
+      description: |
+        Fetches TMDB's movie genre list (`/genre/movie/list`) and TV genre
+        list (`/genre/tv/list`) and upserts both into the local catalog,
+        keyed by `id` and `media_type`.
+      responses:
+        "200":
+          description: Genres saved (insert or update).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PopulateGenresResponse"
+        "502":
+          description: TMDB request failed before a response body was received.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: TMDB payload could not be parsed or genres could not be saved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        default:
+          description: |
+            TMDB returned a non-200 status. The status code and JSON body are
+            forwarded from TMDB unchanged.
+
   /populate-movies:
     get:
       tags: [ingest]
@@ -245,6 +278,40 @@ components:
         updated_at:
           type: string
           format: date-time
+
+    Genre:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - media_type
+        - name
+      properties:
+        id:
+          type: integer
+          description: TMDB genre id.
+          example: 35
+        media_type:
+          type: string
+          enum: [movie, tv]
+          description: Which TMDB genre list this row came from. Part of the composite primary key alongside id.
+          example: movie
+        name:
+          type: string
+          example: Comedy
+
+    PopulateGenresResponse:
+      type: object
+      additionalProperties: false
+      required: [saved, genres]
+      properties:
+        saved:
+          type: integer
+          description: Number of genres upserted from this request.
+        genres:
+          type: array
+          items:
+            $ref: "#/components/schemas/Genre"
 
     ListMoviesResponse:
       type: object

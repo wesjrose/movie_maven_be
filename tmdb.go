@@ -49,6 +49,35 @@ func moviesFromTMDB(results []tmdbMovie) []Movie {
 	return movies
 }
 
+type tmdbGenreListResponse struct {
+	Genres []tmdbGenre `json:"genres"`
+}
+
+type tmdbGenre struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
+}
+
+func parseTMDBGenreList(body []byte) (tmdbGenreListResponse, error) {
+	var payload tmdbGenreListResponse
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return tmdbGenreListResponse{}, err
+	}
+	return payload, nil
+}
+
+func genresFromTMDB(results []tmdbGenre, mediaType string) []Genre {
+	genres := make([]Genre, 0, len(results))
+	for _, result := range results {
+		genres = append(genres, Genre{
+			ID:        result.ID,
+			MediaType: mediaType,
+			Name:      result.Name,
+		})
+	}
+	return genres
+}
+
 func (m tmdbMovie) toMovie() Movie {
 	genreIDs := make(pq.Int64Array, len(m.GenreIDs))
 	for i, id := range m.GenreIDs {
