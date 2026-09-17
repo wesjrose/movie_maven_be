@@ -322,6 +322,10 @@ func main() {
 	}
 
 	router := gin.Default()
+	router.GET("/openapi.yaml", func(c *gin.Context) {
+		c.Header("Content-Type", "application/yaml; charset=utf-8")
+		c.File("openapi.yaml")
+	})
 	router.GET("/populate-genres", populateGenres)
 	router.GET("/populate-movies", populateMovieData)
 	router.GET("/populate-movies-since", populateMoviesSince)
