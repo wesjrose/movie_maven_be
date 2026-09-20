@@ -276,8 +276,28 @@ func listMovies(c *gin.Context) {
 		pageSize = parsed
 	}
 
+	var genreID int
+	filterByGenre := false
+	if raw := c.Query("genre_id"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil {
+			log.Printf("listMovies: invalid genre_id query %q: %v", raw, err)
+			c.JSON(http.StatusBadRequest, gin.H{"error": "genre_id query parameter must be an integer"})
+			return
+		}
+		genreID = parsed
+		filterByGenre = true
+	}
+
+	countQuery := db.Model(&Movie{})
+	findQuery := db.Model(&Movie{})
+	if filterByGenre {
+		countQuery = countQuery.Where("? = ANY(genre_ids)", genreID)
+		findQuery = findQuery.Where("? = ANY(genre_ids)", genreID)
+	}
+
 	var totalResults int64
-	if err := db.Model(&Movie{}).Count(&totalResults).Error; err != nil {
+	if err := countQuery.Count(&totalResults).Error; err != nil {
 		log.Printf("listMovies: failed to count movies: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load movies"})
 		return
@@ -285,7 +305,7 @@ func listMovies(c *gin.Context) {
 
 	movies := []Movie{}
 	offset := (page - 1) * pageSize
-	if err := db.Order("release_date DESC NULLS LAST").Limit(pageSize).Offset(offset).Find(&movies).Error; err != nil {
+	if err := findQuery.Order("release_date DESC NULLS LAST").Limit(pageSize).Offset(offset).Find(&movies).Error; err != nil {
 		log.Printf("listMovies: failed to load movies: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load movies"})
 		return
