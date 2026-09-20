@@ -325,6 +325,27 @@ func listMovies(c *gin.Context) {
 	})
 }
 
+func listGenres(c *gin.Context) {
+	query := db.Model(&Genre{})
+
+	if mediaType := c.Query("media_type"); mediaType != "" {
+		if mediaType != "movie" && mediaType != "tv" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "media_type query parameter must be 'movie' or 'tv'"})
+			return
+		}
+		query = query.Where("media_type = ?", mediaType)
+	}
+
+	genres := []Genre{}
+	if err := query.Order("media_type ASC, name ASC").Find(&genres).Error; err != nil {
+		log.Printf("listGenres: failed to load genres: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load genres"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"genres": genres})
+}
+
 func main() {
 	logFile, err := initLogger()
 	if err != nil {
@@ -350,6 +371,7 @@ func main() {
 	router.GET("/populate-movies", populateMovieData)
 	router.GET("/populate-movies-since", populateMoviesSince)
 	router.GET("/movies", listMovies)
+	router.GET("/genres", listGenres)
 
 	if err := router.Run("localhost:8001"); err != nil {
 		log.Fatal(err)
